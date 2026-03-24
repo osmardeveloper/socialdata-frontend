@@ -3,7 +3,7 @@ import axios from 'axios';
 // =========================================================
 // CONFIGURACIÓN DE ENTORNO
 // =========================================================
-const DEBUG = true; // Cambia a "false" para apuntar a producción
+const DEBUG = true; // Cambia a "false" para poder apuntar a producción
 
 const API_LOCAL = 'http://localhost:5000/api';
 const API_PRODUCCION = 'https://socialdata-backend.onrender.com/api'; // <--- Pon tu URL de producción aquí
