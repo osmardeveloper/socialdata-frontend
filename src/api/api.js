@@ -6,7 +6,7 @@ import axios from 'axios';
 const DEBUG = true; // Cambia a "false" para apuntar a producción
 
 const API_LOCAL = 'http://localhost:5000/api';
-const API_PRODUCCION = 'https://tu-backend-en-produccion.com/api'; // <--- Pon tu URL de producción aquí
+const API_PRODUCCION = 'https://socialdata-backend.onrender.com/api'; // <--- Pon tu URL de producción aquí
 
 const api = axios.create({
   baseURL: DEBUG ? API_LOCAL : API_PRODUCCION
