@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Typography, Grid, Card, CardContent, Box } from '@mui/material';
+import { Typography, Grid, Card, CardContent, Box, Button } from '@mui/material';
 import GroupIcon from '@mui/icons-material/Group';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import { useOnlineStatus } from '../context/OnlineStatusContext';
 import api from '../api/api';
 
 export default function Dashboard() {
@@ -11,6 +13,8 @@ export default function Dashboard() {
     usuariosPoblacion: 0,
     formularios: 0
   });
+
+  const { isOnline, isSyncing, pendingSync, pendingCount, triggerPull } = useOnlineStatus();
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -80,6 +84,35 @@ export default function Dashboard() {
           </Card>
         </Grid>
       </Grid>
+
+      {/* 🆕 Sección Offline Preparation */}
+      <Box sx={{ mt: 6, p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: isOnline ? 'rgba(76, 175, 80, 0.04)' : 'rgba(244, 67, 54, 0.04)' }}>
+        <Typography variant="h6" gutterBottom fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {isOnline ? '🟢 Preparación para Salida a Campo' : '🔴 Modo Offline Activado'}
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+          {isOnline 
+            ? 'Si vas a trabajar en zonas sin internet, pulsa el botón para actualizar las plantillas y formularios en este dispositivo.'
+            : 'Actualmente no tienes conexión. Puedes seguir capturando datos; se sincronizarán cuando recuperes la señal.'}
+        </Typography>
+        {isOnline && (
+          <Button 
+            variant="contained" 
+            color="success" 
+            startIcon={<CloudDownloadIcon />} 
+            onClick={triggerPull}
+            disabled={isSyncing}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 'bold' }}
+          >
+            Descargar plantillas para uso offline
+          </Button>
+        )}
+        {!isOnline && pendingSync && (
+          <Typography variant="caption" color="error" fontWeight="bold">
+            ⚠️ Tienes {pendingCount} registros locales pendientes de subir.
+          </Typography>
+        )}
+      </Box>
     </Box>
   );
 }

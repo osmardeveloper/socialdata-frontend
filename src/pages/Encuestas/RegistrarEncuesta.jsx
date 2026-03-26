@@ -8,40 +8,118 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SendIcon from '@mui/icons-material/Send';
 import api from '../../api/api';
 
+// COMPONENTE RECURSIVO PARA RENDERIZAR PREGUNTAS Y SUB-PREGUNTAS
+function QuestionRenderer({ pregunta, respuestas, onRespChange, level = 0 }) {
+  const p = pregunta;
+  const pId = p._id || p.id || `sub-${p.nombre}-${level}`;
+  
+  // Helper para saber si una opción está seleccionada
+  const isSelected = (optText) => {
+    const current = respuestas[pId];
+    if (Array.isArray(current)) return current.includes(optText);
+    return current === optText;
+  };
+
+  return (
+    <Box sx={{ 
+      mt: 1, 
+      mb: 2, 
+      pl: level > 0 ? 3 : 0, 
+      borderLeft: level > 0 ? '2px solid #1565C0' : 'none',
+      bgcolor: level > 0 ? 'rgba(0,0,0,0.02)' : 'transparent',
+      p: level > 0 ? 2 : 0,
+      borderRadius: 1
+    }}>
+      <Typography variant={level === 0 ? "body1" : "body2"} fontWeight="bold" gutterBottom>
+        {p.nombre}
+      </Typography>
+
+      {/* RENDER SEGÚN TIPO */}
+      {p.tipo === 'texto' && (
+        <TextField fullWidth size="small" placeholder="Respuesta..." value={respuestas[pId] || ''} onChange={(e) => onRespChange(pId, e.target.value)} />
+      )}
+
+      {p.tipo === 'numero' && (
+        <TextField fullWidth size="small" type="number" placeholder="0" value={respuestas[pId] || ''} onChange={(e) => onRespChange(pId, e.target.value)} />
+      )}
+
+      {p.tipo === 'booleano' && (
+        <FormControlLabel control={<Switch checked={!!respuestas[pId]} onChange={(e) => onRespChange(pId, e.target.checked)} />} label={respuestas[pId] ? 'SÍ' : 'NO'} />
+      )}
+
+      {(p.tipo === 'simple') && p.data && (
+        <FormControl component="fieldset">
+          <RadioGroup value={respuestas[pId] || ''} onChange={(e) => onRespChange(pId, e.target.value)}>
+            {p.data.map((opt, i) => {
+              const optText = typeof opt === 'string' ? opt : opt.text;
+              const hasSub = opt.subPreguntas?.length > 0;
+              return (
+                <Box key={i}>
+                  <FormControlLabel value={optText} control={<Radio />} label={optText} />
+                  {/* SI TIENE SUB-PREGUNTAS Y ESTÁ SELECCIONADO, RENDERIZAMOS RECURSIVAMENTE */}
+                  {hasSub && isSelected(optText) && (
+                    <Box sx={{ mt: 1 }}>
+                      {opt.subPreguntas.map((sp, spi) => (
+                        <QuestionRenderer key={spi} pregunta={sp} respuestas={respuestas} onRespChange={onRespChange} level={level + 1} />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </RadioGroup>
+        </FormControl>
+      )}
+
+      {(p.tipo === 'multiple') && p.data && (
+        <FormControl component="fieldset">
+          <FormGroup>
+            {p.data.map((opt, i) => {
+              const optText = typeof opt === 'string' ? opt : opt.text;
+              const hasSub = opt.subPreguntas?.length > 0;
+              const checkedList = respuestas[pId] || [];
+              const isChecked = checkedList.includes(optText);
+              
+              return (
+                <Box key={i}>
+                  <FormControlLabel 
+                    control={<Checkbox checked={isChecked} onChange={(e) => onRespChange(pId, e.target.checked, true, optText)} />} 
+                    label={optText} 
+                  />
+                  {hasSub && isChecked && (
+                    <Box sx={{ mt: 1 }}>
+                      {opt.subPreguntas.map((sp, spi) => (
+                        <QuestionRenderer key={spi} pregunta={sp} respuestas={respuestas} onRespChange={onRespChange} level={level + 1} />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </FormGroup>
+        </FormControl>
+      )}
+    </Box>
+  );
+}
+
 export default function RegistrarEncuesta() {
   const [usuarios, setUsuarios] = useState([]);
   const [formularios, setFormularios] = useState([]);
   const [usuarioSelect, setUsuarioSelect] = useState('');
   const [formSelect, setFormSelect] = useState('');
-
-  // Data del formulario cargado
   const [preguntasActuales, setPreguntasActuales] = useState([]);
-  const [expanded, setExpanded] = useState(false); // ID del detalle actual expandido
-
-  // Respuestas dinámicas
+  const [expanded, setExpanded] = useState(false);
   const [respuestas, setRespuestas] = useState({});
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [uRes, fRes] = await Promise.all([
-          api.get('/usuarios'),
-          api.get('/formularios')
-        ]);
-        setUsuarios(uRes.data);
-        setFormularios(fRes.data);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    fetchData();
+    api.get('/usuarios').then(res => setUsuarios(res.data));
+    api.get('/formularios').then(res => setFormularios(res.data));
   }, []);
 
-  // Cargar las preguntas del formulario seleccionado y aplanarlas visualmente
   const handleFormSelect = (e) => {
     const formId = e.target.value;
     setFormSelect(formId);
-    
     const formElegido = formularios.find(f => f._id === formId);
     if (formElegido) {
       let flattened = [];
@@ -51,8 +129,6 @@ export default function RegistrarEncuesta() {
       setPreguntasActuales(flattened);
       if (flattened.length > 0) setExpanded(flattened[0]._id);
       setRespuestas({});
-    } else {
-      setPreguntasActuales([]);
     }
   };
 
@@ -60,35 +136,21 @@ export default function RegistrarEncuesta() {
     if (isMultiple) {
       const prev = Array.isArray(respuestas[preguntaId]) ? respuestas[preguntaId] : [];
       let newSelection = [...prev];
-      if (valor) { // if checked
-        newSelection.push(itemMultiple);
-      } else { // if unchecked
-        newSelection = newSelection.filter(v => v !== itemMultiple);
-      }
+      if (valor) newSelection.push(itemMultiple);
+      else newSelection = newSelection.filter(v => v !== itemMultiple);
       setRespuestas({ ...respuestas, [preguntaId]: newSelection });
     } else {
       setRespuestas({ ...respuestas, [preguntaId]: valor });
     }
   };
 
-  const nextQuestion = (currentIndex) => {
-    if (currentIndex + 1 < preguntasActuales.length) {
-      setExpanded(preguntasActuales[currentIndex + 1]._id);
-    } else {
-      setExpanded(false); // Close all 
-    }
-  };
-
   const handleSaveEncuesta = async () => {
-    if (!usuarioSelect || !formSelect) return alert('Selecciona Usuario y Formulario');
-    
-    // Convert object a array de respuestas
+    if (!usuarioSelect || !formSelect) return alert('Datos incompletos');
     const respArray = Object.keys(respuestas).map(key => ({
-      pregunta_id: key,
+      pregunta_id: key.startsWith('sub-') ? null : key, // Identificamos si es main o sub
+      pregunta_nombre: key.startsWith('sub-') ? key : null,
       respuesta: respuestas[key]
     }));
-
-    if (respArray.length === 0) return alert('Debes responder al menos una pregunta');
 
     try {
       await api.post('/encuestas', {
@@ -96,144 +158,49 @@ export default function RegistrarEncuesta() {
         usuario_id: usuarioSelect,
         respuestas: respArray
       });
-      alert('Encuesta registrada exitosamente');
-      setUsuarioSelect('');
-      setFormSelect('');
-      setPreguntasActuales([]);
-      setRespuestas({});
-    } catch (error) {
-      console.error(error);
-      alert('Error registrando encuesta');
-    }
+      alert('Caracterización guardada con éxito.');
+      setUsuarioSelect(''); setFormSelect(''); setPreguntasActuales([]); setRespuestas({});
+    } catch (error) { alert('Error al guardar'); }
   };
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight="bold" color="primary.main" gutterBottom>
-        Registrar Caracterización
-      </Typography>
-
+      <Typography variant="h4" fontWeight="bold" color="primary.main" gutterBottom>Registrar Caracterización</Typography>
       <Paper sx={{ p: 4, mb: 4, borderRadius: 2 }}>
-        <Typography variant="h6" color="secondary.main" gutterBottom>1. Configuración de Encuesta</Typography>
-        <Box display="flex" gap={3} my={3}>
-          <TextField 
-            select fullWidth label="Seleccionar Ciudadano / Población" 
-            value={usuarioSelect} onChange={(e) => setUsuarioSelect(e.target.value)}
-          >
+        <Box display="flex" gap={3} mb={4}>
+          <TextField select fullWidth label="Ciudadano" value={usuarioSelect} onChange={(e) => setUsuarioSelect(e.target.value)}>
             {usuarios.map(u => <MenuItem key={u._id} value={u._id}>{u.nombre} {u.apellido}</MenuItem>)}
           </TextField>
-
-          <TextField 
-            select fullWidth label="Seleccionar Formulario Personalizado" 
-            value={formSelect} onChange={handleFormSelect}
-          >
+          <TextField select fullWidth label="Formulario" value={formSelect} onChange={handleFormSelect}>
             {formularios.map(f => <MenuItem key={f._id} value={f._id}>{f.titulo}</MenuItem>)}
           </TextField>
         </Box>
 
-        <Divider sx={{ my: 4 }} />
-
         {preguntasActuales.length > 0 && (
-          <>
-            <Typography variant="h6" color="secondary.main" gutterBottom>2. Completar Formulario</Typography>
-            <Typography variant="body2" color="text.secondary" mb={3}>Responde y presiona "Siguiente" para avanzar.</Typography>
-            
-            <Box mb={4}>
-              {preguntasActuales.map((p, index) => {
-                const isOpen = expanded === p._id;
-
-                return (
-                  <Accordion 
-                    key={p._id} 
-                    expanded={isOpen} 
-                    onChange={() => setExpanded(isOpen ? false : p._id)}
-                    sx={{ border: '1px solid #e0e0e0', mb: 1, '&:before': { display: 'none' } }}
-                  >
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: isOpen ? 'primary.50' : 'background.paper' }}>
-                      <Typography fontWeight="bold" color={isOpen ? 'primary.main' : 'text.primary'}>
-                        {index + 1}. {p.nombre}
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails sx={{ p: 3 }}>
-                      
-                      {/* RENDER INGRESO DEPENDIENDO EL TIPO */}
-                      {p.tipo === 'texto' && (
-                        <TextField 
-                          fullWidth placeholder="Escribe la respuesta..." 
-                          value={respuestas[p._id] || ''} onChange={(e) => handleRespChange(p._id, e.target.value)}
-                        />
-                      )}
-
-                      {p.tipo === 'numero' && (
-                        <TextField 
-                          fullWidth type="number" placeholder="Ingresa el valor numérico" 
-                          value={respuestas[p._id] || ''} onChange={(e) => handleRespChange(p._id, e.target.value)}
-                        />
-                      )}
-
-                      {p.tipo === 'booleano' && (
-                        <FormControlLabel 
-                          control={<Switch checked={!!respuestas[p._id]} onChange={(e) => handleRespChange(p._id, e.target.checked)} />}
-                          label={respuestas[p._id] ? 'SÍ' : 'NO'}
-                        />
-                      )}
-
-                      {p.tipo === 'simple' && p.data && (
-                        <FormControl>
-                          <FormLabel sx={{ mb: 1 }}>Selecciona una única opción</FormLabel>
-                          <RadioGroup 
-                            value={respuestas[p._id] || ''} 
-                            onChange={(e) => handleRespChange(p._id, e.target.value)}
-                          >
-                            {p.data.map((opt, i) => (
-                              <FormControlLabel key={i} value={opt} control={<Radio />} label={opt} />
-                            ))}
-                          </RadioGroup>
-                        </FormControl>
-                      )}
-
-                      {p.tipo === 'multiple' && p.data && (
-                        <FormControl component="fieldset">
-                          <FormLabel sx={{ mb: 1 }}>Puedes seleccionar múltiples opciones</FormLabel>
-                          <FormGroup>
-                            {p.data.map((opt, i) => {
-                              const checkedList = respuestas[p._id] || [];
-                              const isChecked = checkedList.includes(opt);
-                              return (
-                                <FormControlLabel 
-                                  key={i} 
-                                  control={
-                                    <Checkbox checked={isChecked} onChange={(e) => handleRespChange(p._id, e.target.checked, true, opt)} />
-                                  } 
-                                  label={opt} 
-                                />
-                              )
-                            })}
-                          </FormGroup>
-                        </FormControl>
-                      )}
-
-                      <Box display="flex" justifyContent="flex-end" mt={3}>
-                        <Button 
-                          variant="contained" 
-                          color="primary" 
-                          onClick={() => nextQuestion(index)}
-                        >
-                          {index + 1 === preguntasActuales.length ? 'Finalizar Todo' : 'Siguiente Pregunta'}
-                        </Button>
-                      </Box>
-                    </AccordionDetails>
-                  </Accordion>
-                )
-              })}
-            </Box>
-
-            <Box display="flex" justifyContent="flex-start" mt={2}>
-              <Button variant="contained" color="success" size="large" onClick={handleSaveEncuesta} startIcon={<SendIcon />}>
-                Guardar Encuesta de Caracterización
-              </Button>
-            </Box>
-          </>
+          <Box>
+            {preguntasActuales.map((p, index) => (
+              <Accordion 
+                key={p._id} 
+                expanded={expanded === p._id} 
+                onChange={() => setExpanded(expanded === p._id ? false : p._id)}
+                sx={{ mb: 1, border: '1px solid #eee' }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: expanded === p._id ? 'primary.50' : 'white' }}>
+                  <Typography fontWeight="bold">{index + 1}. {p.nombre}</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 3 }}>
+                  <QuestionRenderer pregunta={p} respuestas={respuestas} onRespChange={handleRespChange} />
+                  <Divider sx={{ my: 2 }} />
+                  <Button variant="outlined" onClick={() => setExpanded(preguntasActuales[index + 1]?._id || false)}>
+                    {index + 1 === preguntasActuales.length ? 'Revisar Todo' : 'Siguiente'}
+                  </Button>
+                </AccordionDetails>
+              </Accordion>
+            ))}
+            <Button variant="contained" color="success" size="large" fullWidth sx={{ mt: 3 }} onClick={handleSaveEncuesta} startIcon={<SendIcon />}>
+              Guardar Caracterización Final
+            </Button>
+          </Box>
         )}
       </Paper>
     </Box>

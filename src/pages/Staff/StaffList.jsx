@@ -79,7 +79,7 @@ export default function StaffList() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4" fontWeight="bold">Gestión de Staff</Typography>
         <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => handleOpen()}>
-          Nuevo Usuario
+          Nuevo Usuario Staff
         </Button>
       </Box>
 

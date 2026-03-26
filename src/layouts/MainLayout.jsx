@@ -1,4 +1,6 @@
 import { useState, useContext } from 'react';
+import OnlineStatusBadge from '../components/OnlineStatusBadge';
+import OfflineBanner from '../components/OfflineBanner';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import {
@@ -28,6 +30,7 @@ import NoteAddIcon from '@mui/icons-material/NoteAdd';      // Nueva Encuesta
 import ListAltIcon from '@mui/icons-material/ListAlt';        // Listado Formularios
 import LogoutIcon from '@mui/icons-material/Logout';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import FamilyRestroomIcon from '@mui/icons-material/FamilyRestroom';
 
 export default function MainLayout() {
   const { user, logout } = useContext(AuthContext);
@@ -48,6 +51,7 @@ export default function MainLayout() {
     { text: 'Constructor de Formulario', icon: <DocumentScannerIcon />, path: '/formularios', roles: ['administrador'] },
     { text: 'Listado de Formularios', icon: <ListAltIcon />, path: '/listado-formularios' },
     { text: 'Nueva Encuesta', icon: <NoteAddIcon />, path: '/nueva-encuesta' },
+    { text: 'Grupos Familiares', icon: <FamilyRestroomIcon />, path: '/grupos-familiares' },
     { text: 'Encuestas Realizadas', icon: <AssessmentIcon />, path: '/encuestas-realizadas' },
   ];
 
@@ -112,9 +116,11 @@ export default function MainLayout() {
               <Typography variant="caption" sx={{ opacity: 0.75, textTransform: 'capitalize' }}>{user?.rol}</Typography>
             </Box>
           </Box>
-          <Button color="inherit" onClick={handleLogout} startIcon={<LogoutIcon />}>Salir</Button>
+          <OnlineStatusBadge />
+          <Button color="inherit" onClick={handleLogout} startIcon={<LogoutIcon />} sx={{ ml: 1 }}>Salir</Button>
         </Toolbar>
       </AppBar>
+      <OfflineBanner />
       
       <Drawer
         anchor="left"
@@ -124,7 +130,7 @@ export default function MainLayout() {
         {drawerContent}
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8, backgroundColor: 'background.default' }}>
+      <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8, backgroundColor: 'background.default', width: '100%', display: 'block' }}>
         <Outlet />
       </Box>
     </Box>
