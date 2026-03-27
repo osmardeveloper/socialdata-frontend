@@ -1,38 +1,33 @@
-/**
- * context/OnlineStatusContext.jsx
- * Contexto global para el estado de conectividad.
- * - Consulta /api/status cada 15 segundos
- * - Expone: isOnline, pendingSync, pendingCount, isSyncing, triggerSync
- */
-
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api/api';
+import localDb from '../api/offline';
 
 const OnlineStatusContext = createContext(null);
-
-const POLL_INTERVAL_MS = 15000; // 15 segundos
+const POLL_INTERVAL_MS = 15000;
 
 export function OnlineStatusProvider({ children }) {
-  const [isOnline, setIsOnline]         = useState(true);
-  const [pendingSync, setPendingSync]   = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingSync, setPendingSync] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
-  const [isSyncing, setIsSyncing]       = useState(false);
-  const [lastChecked, setLastChecked]   = useState(null);
-  const [syncMessage, setSyncMessage]   = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastChecked, setLastChecked] = useState(null);
+  const [syncMessage, setSyncMessage] = useState('');
+  const [lastPullDate, setLastPullDate] = useState(localStorage.getItem('lastPullDate') || null);
   const prevOnline = useRef(true);
 
+  // 1. MOTOR DE ESTADO (Independiente)
   const checkStatus = useCallback(async () => {
     try {
       const res = await api.get('/status');
       const { online, pendingSync: pending, pendingCount: count } = res.data;
 
-      // Detectar transición OFFLINE → ONLINE
+      // Al volver online, disparamos la sync de forma segura
       if (!prevOnline.current && online) {
-        setSyncMessage('Sincronizando datos...');
-        setIsSyncing(true);
+        // Usamos setImmediate o un microtask para no bloquear el render
+        Promise.resolve().then(() => triggerSync());
       }
-
-      // Detectar fin de sync
+      
+      // Limpieza automática al terminar sync
       if (prevOnline.current && online && !pending && isSyncing) {
         setSyncMessage('');
         setIsSyncing(false);
@@ -43,57 +38,65 @@ export function OnlineStatusProvider({ children }) {
       setPendingSync(pending);
       setPendingCount(count);
       setLastChecked(new Date());
-    } catch {
-      // Si el endpoint falla → estamos offline (o el servidor caído)
+    } catch (err) {
       setIsOnline(false);
       prevOnline.current = false;
     }
-  }, [isSyncing]);
+  }, [isSyncing]); // Quitamos triggerSync de aquí para romper el bucle
 
-  // Sincronización manual
+  // 2. MOTOR DE SINCRONIZACIÓN (Llamado manual o por checkStatus)
   const triggerSync = useCallback(async () => {
     if (isSyncing) return;
     setIsSyncing(true);
-    setSyncMessage('Sincronizando datos...');
+    setSyncMessage('Subiendo datos locales...');
     try {
+      // IndexedDB -> API
+      await localDb.syncData((msg) => setSyncMessage(msg));
+      
+      // API -> Nube
+      setSyncMessage('Sincronizando con la nube...');
       const res = await api.post('/status/sync');
-      const { result } = res.data;
-      if (result.status === 'completed') {
-        setSyncMessage('✅ Sincronización completada');
+      if (res.data.result?.status === 'completed') {
+        setSyncMessage('Sincronización completada');
         setTimeout(() => setSyncMessage(''), 4000);
-      } else {
-        setSyncMessage(`Estado: ${result.status}`);
       }
-      await checkStatus(); // Refrescar counts
+      // Llamamos a checkStatus al final para refrescar
+      checkStatus();
     } catch (err) {
-      setSyncMessage('❌ Error al sincronizar');
+      setSyncMessage('Error al sincronizar');
       setTimeout(() => setSyncMessage(''), 4000);
+      setIsSyncing(false);
     } finally {
       setIsSyncing(false);
     }
   }, [isSyncing, checkStatus]);
 
-  // Descarga de plantillas (PULL)
+  // 3. MOTOR DE DESCARGA (Pull)
   const triggerPull = useCallback(async () => {
     if (isSyncing) return;
     setIsSyncing(true);
     setSyncMessage('Descargando plantillas...');
     try {
-      const res = await api.post('/status/pull');
-      setSyncMessage('✅ Plantillas descargadas');
+      await api.post('/status/pull');
+      const now = new Date();
+      const options = { day: 'numeric', month: 'long', hour: 'numeric', minute: 'numeric', hour12: true };
+      const formattedDate = now.toLocaleString('es-ES', options).replace(',', ' a las');
+      
+      setLastPullDate(formattedDate);
+      localStorage.setItem('lastPullDate', formattedDate);
+      
+      setSyncMessage('Plantillas descargadas correctamente');
       setTimeout(() => setSyncMessage(''), 4000);
-      await checkStatus();
+      checkStatus();
     } catch (err) {
-      setSyncMessage('❌ Error al descargar plantillas');
-      setTimeout(() => setSyncMessage(''), 4000);
+      setSyncMessage(''); // Ocultamos el mensaje de error
     } finally {
       setIsSyncing(false);
     }
   }, [isSyncing, checkStatus]);
 
-  // Polling periódico
   useEffect(() => {
-    checkStatus(); // Inmediato al montar
+    checkStatus();
     const interval = setInterval(checkStatus, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [checkStatus]);
@@ -105,7 +108,7 @@ export function OnlineStatusProvider({ children }) {
     } else if (syncMessage === 'Trabajando en modo offline') {
       setSyncMessage('');
     }
-  }, [isOnline]);
+  }, [isOnline, syncMessage]);
 
   return (
     <OnlineStatusContext.Provider value={{
@@ -114,10 +117,11 @@ export function OnlineStatusProvider({ children }) {
       pendingCount,
       isSyncing,
       syncMessage,
+      lastPullDate,
       lastChecked,
       triggerSync,
       triggerPull,
-      checkStatus,
+      checkStatus
     }}>
       {children}
     </OnlineStatusContext.Provider>
